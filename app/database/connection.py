@@ -39,7 +39,7 @@ async def init_db():
     try:
         async with engine.begin() as conn:
             # Enable PostGIS extension
-            await conn.execute("CREATE EXTENSION IF NOT EXISTS postgis")
+        
             
             # Create all tables
             await conn.run_sync(Base.metadata.create_all)
