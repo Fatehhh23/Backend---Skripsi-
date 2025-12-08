@@ -1,15 +1,22 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.config import settings
 
-# ✅ Buat instance FastAPI
+from app.config import settings
+from app.api.v1 import health, simulation, realtime, history
+
+# ============================================
+# FastAPI App Instance
+# ============================================
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.VERSION,
-    debug=settings.DEBUG
+    debug=settings.DEBUG,
+    description="WebGIS Simulasi Prediksi Tsunami Selat Sunda dengan SSL-ViT-CNN",
 )
 
-# ✅ Setup CORS
+# ============================================
+# CORS Middleware
+# ============================================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -18,20 +25,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ✅ Health check endpoint
-@app.get("/")
+# ============================================
+# Root Endpoint
+# ============================================
+@app.get("/", tags=["Root"])
 async def root():
     return {
-        "message": "AVATAR Tsunami API is running",
+        "message": "AVATAR Tsunami Prediction API is running",
         "version": settings.VERSION,
-        "status": "healthy"
+        "status": "healthy",
     }
 
-@app.get("/health")
-async def health_check():
-    return {
-        "status": "ok",
-        "app_name": settings.APP_NAME,
-        "version": settings.VERSION
-    }
-
+# ============================================
+# Include All Routers
+# ============================================
+app.include_router(health.router, prefix="/api", tags=["Health"])
+app.include_router(simulation.router, prefix="/api/v1/simulation", tags=["Simulation"])
+app.include_router(realtime.router, prefix="/api/v1/earthquakes", tags=["Real-Time"])
+app.include_router(history.router, prefix="/api/v1/history", tags=["History"])
