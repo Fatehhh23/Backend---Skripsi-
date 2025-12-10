@@ -197,15 +197,17 @@ class PredictionService:
             radius = (i + 1) * 0.05  # degrees
             height = wave_height / (i + 1)
             
-            # Simple square polygon (placeholder)
+            # ✅ FIXED: Correct GeoJSON Polygon structure (2 levels of nesting)
+            # Format: coordinates: [ [exterior_ring], [hole1], [hole2], ... ]
+            # Each ring is array of [lon, lat] points
             zones.append({
-                "coordinates": [[[
+                "coordinates": [[  # Removed extra nesting level
                     [lon - radius, lat - radius],
                     [lon + radius, lat - radius],
                     [lon + radius, lat + radius],
                     [lon - radius, lat + radius],
                     [lon - radius, lat - radius]
-                ]]],
+                ]],
                 "height": round(height, 2)
             })
         
