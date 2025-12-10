@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 import logging
@@ -14,8 +14,9 @@ logger = logging.getLogger(__name__)
 
 @router.post("/simulation/run", response_model=SimulationResponse)
 async def run_simulation(
-    request: SimulationRequest,
+    request_data: SimulationRequest,
     background_tasks: BackgroundTasks,
+    req: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -30,15 +31,15 @@ async def run_simulation(
     Returns:
     - Hasil prediksi tsunami termasuk ETA, tinggi gelombang, zona genangan
     """
-    logger.info(f"Simulation request: M{request.magnitude} at ({request.latitude}, {request.longitude})")
+    logger.info(f"Simulation request: M{request_data.magnitude} at ({request_data.latitude}, {request_data.longitude})")
     
     # Validate input parameters
     try:
         validate_earthquake_params(
-            request.magnitude,
-            request.depth,
-            request.latitude,
-            request.longitude
+            request_data.magnitude,
+            request_data.depth,
+            request_data.latitude,
+            request_data.longitude
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -49,18 +50,27 @@ async def run_simulation(
         
         # Run prediction
         result = await prediction_service.predict(
-            magnitude=request.magnitude,
-            depth=request.depth,
-            latitude=request.latitude,
-            longitude=request.longitude
+            magnitude=request_data.magnitude,
+            depth=request_data.depth,
+            latitude=request_data.latitude,
+            longitude=request_data.longitude
         )
+        
+        # Get client IP address
+        client_ip = req.client.host if req.client else None
+        
+        # Get processing time from result
+        processing_time_ms = result.get('prediction', {}).get('processingTimeMs', None)
         
         # Save to database (background task)
         background_tasks.add_task(
             crud.save_simulation_result,
             db=db,
-            params=request.dict(),
-            result=result
+            params=request_data.dict(),
+            result=result,
+            processing_time_ms=processing_time_ms,
+            user_session_id=None,  # TODO: Implement session tracking
+            ip_address=client_ip
         )
         
         logger.info(f"Simulation completed: ETA={result['prediction']['eta']}min")
