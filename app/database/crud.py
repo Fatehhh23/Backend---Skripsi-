@@ -6,8 +6,8 @@ import uuid
 import logging
 
 from app.database.models import Simulation, Earthquake, InundationZone
-from geoalchemy2.shape import from_shape
-from shapely.geometry import Point
+# from geoalchemy2.shape import from_shape  # TEMP: Commented out - requires GDAL/PROJ libraries
+# from shapely.geometry import Point  # TEMP: Commented out - requires GDAL/PROJ libraries
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +26,16 @@ async def save_simulation_result(
     """
     try:
         # Create Point geometry for epicenter
-        point = Point(params['longitude'], params['latitude'])
+        # TEMP: Commented out - requires geoalchemy2
+        # point = Point(params['longitude'], params['latitude'])
         
         simulation = Simulation(
             magnitude=params['magnitude'],
             depth=params['depth'],
             latitude=params['latitude'],
             longitude=params['longitude'],
-            epicenter=from_shape(point, srid=4326),
+            # TEMP: Commented out - requires geoalchemy2
+            # epicenter=from_shape(point, srid=4326),
             prediction_data=result,
             processing_time_ms=processing_time_ms,
             user_session_id=user_session_id,
@@ -168,7 +170,8 @@ async def save_earthquake_data(db: AsyncSession, earthquake: Dict[str, Any]) -> 
             return existing
         
         # Create new record
-        point = Point(earthquake['longitude'], earthquake['latitude'])
+        # TEMP: Commented out - requires geoalchemy2
+        # point = Point(earthquake['longitude'], earthquake['latitude'])
         
         eq = Earthquake(
             id=earthquake['id'],
@@ -176,7 +179,8 @@ async def save_earthquake_data(db: AsyncSession, earthquake: Dict[str, Any]) -> 
             depth=earthquake['depth'],
             latitude=earthquake['latitude'],
             longitude=earthquake['longitude'],
-            location=from_shape(point, srid=4326),
+            # TEMP: Commented out - requires geoalchemy2
+            # location=from_shape(point, srid=4326),
             location_name=earthquake.get('location', ''),
             timestamp=earthquake['timestamp'],
             source=earthquake.get('source', 'BMKG')

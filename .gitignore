@@ -41,6 +41,7 @@ env/
 # Logs
 logs/
 *.log
+!logs/.gitkeep
 
 # Database
 *.db
@@ -51,12 +52,15 @@ logs/
 trained_models/*.onnx
 trained_models/*.pth
 trained_models/*.pt
+!trained_models/.gitkeep
 
 # Data files (large)
 data/bathymetry/*
 data/topography/*
+data/coastlines/*
 !data/bathymetry/.gitkeep
 !data/topography/.gitkeep
+!data/coastlines/.gitkeep
 
 # Testing
 .pytest_cache/

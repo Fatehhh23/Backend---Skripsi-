@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, Float, Integer, DateTime, JSON, Text, Boolean
 from sqlalchemy.dialects.postgresql import UUID
-from geoalchemy2 import Geometry
+# from geoalchemy2 import Geometry  # TEMP: Commented out - requires GDAL/PROJ libraries
 from datetime import datetime
 import uuid
 
@@ -19,7 +19,8 @@ class Simulation(Base):
     longitude = Column(Float, nullable=False)
     
     # Epicenter as PostGIS Point
-    epicenter = Column(Geometry('POINT', srid=4326), nullable=True)
+    # TEMP: Commented out - requires geoalchemy2
+    # epicenter = Column(Geometry('POINT', srid=4326), nullable=True)
     
     # Prediction results (stored as JSON)
     prediction_data = Column(JSON, nullable=False)
@@ -49,7 +50,8 @@ class Earthquake(Base):
     longitude = Column(Float, nullable=False)
     
     # Location as PostGIS Point
-    location = Column(Geometry('POINT', srid=4326), nullable=True)
+    # TEMP: Commented out - requires geoalchemy2
+    # location = Column(Geometry('POINT', srid=4326), nullable=True)
     
     # Metadata
     location_name = Column(Text, nullable=True)
@@ -76,7 +78,8 @@ class InundationZone(Base):
     simulation_id = Column(UUID(as_uuid=True), nullable=False)  # Foreign key to Simulation
     
     # Geometry as PostGIS Polygon
-    geometry = Column(Geometry('POLYGON', srid=4326), nullable=False)
+    # TEMP: Commented out - requires geoalchemy2
+    # geometry = Column(Geometry('POLYGON', srid=4326), nullable=False)
     
     # Wave characteristics
     wave_height = Column(Float, nullable=False)  # meter
@@ -99,7 +102,8 @@ class CoastlineData(Base):
     name = Column(String(255), nullable=False)
     
     # Coastline as PostGIS LineString
-    geometry = Column(Geometry('LINESTRING', srid=4326), nullable=False)
+    # TEMP: Commented out - requires geoalchemy2
+    # geometry = Column(Geometry('LINESTRING', srid=4326), nullable=False)
     
     # Metadata
     region = Column(String(100), nullable=True)
