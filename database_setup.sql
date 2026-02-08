@@ -20,15 +20,15 @@
 -- LANGKAH 1: Buat Database Baru
 -- ============================================
 -- Hapus database lama jika ada (HATI-HATI: akan menghapus semua data!)
-DROP DATABASE IF EXISTS tsunamidb;
--- Buat database baru dengan nama "tsunamidb"
-CREATE DATABASE tsunamidb WITH OWNER = postgres ENCODING = 'UTF8' LC_COLLATE = 'English_United States.1252' LC_CTYPE = 'English_United States.1252' TABLESPACE = pg_default CONNECTION
+DROP DATABASE IF EXISTS tsunami_db;
+-- Buat database baru dengan nama "tsunami_db"
+CREATE DATABASE tsunami_db WITH OWNER = postgres ENCODING = 'UTF8' LC_COLLATE = 'English_United States.1252' LC_CTYPE = 'English_United States.1252' TABLESPACE = pg_default CONNECTION
 LIMIT = -1;
 -- ============================================
 -- LANGKAH 2: Koneksi ke Database yang Baru Dibuat
 -- ============================================
--- Perintah \c digunakan untuk berpindah ke database tsunamidb
-\ c tsunamidb -- ============================================
+-- Perintah \c digunakan untuk berpindah ke database tsunami_db
+\ c tsunami_db -- ============================================
 -- LANGKAH 3: Aktifkan Extension PostGIS
 -- ============================================
 -- PostGIS adalah extension untuk menyimpan dan memproses data geografis
@@ -354,7 +354,7 @@ SHOW TIMEZONE;
 -- ============================================
 -- SELESAI!
 -- ============================================
--- Database tsunamidb sudah siap digunakan!
+-- Database tsunami_db sudah siap digunakan!
 -- 
 -- Langkah selanjutnya:
 -- 1. Update .env file di backend dengan DATABASE_URL yang benar
