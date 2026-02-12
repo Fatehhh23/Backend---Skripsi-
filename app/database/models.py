@@ -1,10 +1,58 @@
-from sqlalchemy import Column, String, Float, Integer, DateTime, JSON, Text, Boolean
+from sqlalchemy import Column, String, Float, Integer, DateTime, JSON, Text, Boolean, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 # from geoalchemy2 import Geometry  # TEMP: Commented out - requires GDAL/PROJ libraries
 from datetime import datetime
 import uuid
+import enum
 
 from app.database.connection import Base
+
+# ============================================
+# Enums
+# ============================================
+
+class UserRole(str, enum.Enum):
+    """User roles for RBAC"""
+    ADMIN = "admin"
+    USER = "user"
+    GUEST = "guest"
+
+# ============================================
+# Models
+# ============================================
+
+class User(Base):
+    """Model untuk user authentication dan management"""
+    __tablename__ = "users"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    # Credentials
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    username = Column(String(100), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)  # Hashed password
+    
+    # Profile
+    full_name = Column(String(255), nullable=True)
+    
+    # Role & Status
+    # Use values_callable to ensure enum VALUE (not NAME) is used in database
+    role = Column(
+        SQLEnum(UserRole, values_callable=lambda x: [e.value for e in x]),
+        default=UserRole.USER,
+        nullable=False
+    )
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_verified = Column(Boolean, default=False, nullable=False)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_login = Column(DateTime, nullable=True)
+    
+    def __repr__(self):
+        return f"<User {self.username} - {self.role.value}>"
+
 
 class Simulation(Base):
     """Model untuk menyimpan riwayat simulasi"""

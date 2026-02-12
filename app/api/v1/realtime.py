@@ -11,10 +11,10 @@ from app.database import crud
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-@router.get("/earthquakes/realtime")
+@router.get("/realtime")
 async def get_realtime_earthquakes(
-    limit: int = Query(default=10, ge=1, le=100),
-    min_magnitude: Optional[float] = Query(default=5.0, ge=3.0),
+    limit: int = Query(default=50, ge=1, le=100),
+    min_magnitude: Optional[float] = Query(default=2.0, ge=1.0),
     hours: int = Query(default=24, ge=1, le=168),  # Max 1 week
     db: AsyncSession = Depends(get_db)
 ):
@@ -26,21 +26,11 @@ async def get_realtime_earthquakes(
     - min_magnitude: Magnitudo minimum (default: 5.0)
     - hours: Rentang waktu dalam jam (default: 24)
     """
-    logger.info(f"Fetching realtime earthquakes: M>={min_magnitude}, last {hours}h")
+    logger.info(f"Serving realtime earthquakes from DB: limit={limit}")
     
     try:
-        earthquake_service = EarthquakeService()
-        
-        # Fetch from external API
-        earthquakes = await earthquake_service.fetch_recent_earthquakes(
-            min_magnitude=min_magnitude,
-            hours=hours,
-            limit=limit
-        )
-        
-        # Save to database for caching
-        for eq in earthquakes:
-            await crud.save_earthquake_data(db, eq)
+        # Get from database (populated by scheduler)
+        earthquakes = await crud.get_earthquake_history(db, limit=limit)
         
         # Analyze tsunami risk for each earthquake
         analyzed_earthquakes = []
@@ -49,6 +39,9 @@ async def get_realtime_earthquakes(
             risk_level = "Rendah"
             max_wave_height = 0.0
             
+            # Convert timestamp to aware datetime if naive (for calculation)
+            # SQLAlchemy returns naive for timestamp without timezone
+            
             if eq['magnitude'] >= 7.5 and eq['depth'] < 50:
                 risk_level = "Bahaya"
                 max_wave_height = (eq['magnitude'] - 6.5) * 2
@@ -56,11 +49,10 @@ async def get_realtime_earthquakes(
                 risk_level = "Sedang"
                 max_wave_height = (eq['magnitude'] - 6.0) * 1.5
             
-            analyzed_earthquakes.append({
-                **eq,
-                "riskLevel": risk_level,
-                "maxWaveHeight": round(max_wave_height, 2)
-            })
+            # Add risk info
+            eq["riskLevel"] = risk_level
+            eq["maxWaveHeight"] = round(max_wave_height, 2)
+            analyzed_earthquakes.append(eq)
         
         return {
             "status": "success",
@@ -70,7 +62,7 @@ async def get_realtime_earthquakes(
         }
         
     except Exception as e:
-        logger.error(f"Error fetching realtime data: {e}", exc_info=True)
+        logger.error(f"Error serving realtime data: {e}", exc_info=True)
         return {
             "status": "error",
             "earthquakes": [],

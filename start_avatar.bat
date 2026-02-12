@@ -11,7 +11,7 @@ echo.
 
 REM Step 1: Start Docker Containers
 echo [1/2] Starting Docker containers...
-cd "c:\Skripsi_Fatihh\Fullstack WEB AVATA (AntiGravity)\Backend---Skripsi-"
+cd /d "%~dp0"
 docker-compose up -d
 
 REM Wait for containers to be ready
@@ -22,7 +22,7 @@ timeout /t 15 /nobreak
 REM Step 2: Start Frontend
 echo.
 echo [2/2] Starting Frontend dev server...
-cd "..\Frontend-Skripsi-"
+cd /d "%~dp0..\Frontend-Skripsi-"
 start cmd /k "npm run dev"
 
 REM Done
