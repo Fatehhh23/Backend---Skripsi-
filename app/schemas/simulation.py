@@ -8,6 +8,7 @@ class SimulationRequest(BaseModel):
     depth: float = Field(..., ge=1.0, le=700.0, description="Kedalaman gempa (km)")
     latitude: float = Field(..., ge=-90.0, le=90.0, description="Latitude")
     longitude: float = Field(..., ge=-180.0, le=180.0, description="Longitude")
+    mode: str = Field("AI", description="Mode simulasi: 'AI' (Selat Sunda) atau 'HEURISTIC' (Umum)")
     
     @validator('magnitude')
     def validate_magnitude(cls, v):

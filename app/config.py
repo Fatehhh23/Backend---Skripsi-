@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     # ============================================
     # Model Configuration
     # ============================================
-    MODEL_PATH: str = "trained_models/ssl_vit_cnn.onnx"
+    MODEL_PATH: str = "trained_models/model_tsunami_trial.onnx"
     MODEL_CONFIG_PATH: str = "trained_models/model_config.json"
     USE_GPU: bool = False
     BATCH_SIZE: int = 1

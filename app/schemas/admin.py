@@ -30,6 +30,7 @@ class UserListItem(BaseModel):
     is_verified: bool
     created_at: datetime
     last_login: Optional[datetime]
+    total_simulations: int = 0
     
     class Config:
         from_attributes = True

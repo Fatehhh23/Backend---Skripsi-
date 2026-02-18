@@ -21,6 +21,11 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+class SocialLoginRequest(BaseModel):
+    """Schema untuk login via social media"""
+    provider: str
+    token: str
+
 # ============================================
 # Response Schemas
 # ============================================

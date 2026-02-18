@@ -85,3 +85,36 @@ async def get_current_admin_user(
             detail="Not enough permissions. Admin access required."
         )
     return current_user
+
+async def get_current_user_optional(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)),
+    db: AsyncSession = Depends(get_db)
+) -> Optional[User]:
+    """
+    Dependency untuk get current user secara optional (bisa None).
+    Pakai di endpoint public yang butuh tracking user jika ada.
+    """
+    if not credentials:
+        return None
+    
+    try:
+        token = credentials.credentials
+        payload = decode_access_token(token)
+        
+        if not payload:
+            return None
+            
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+            
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        
+        if user and user.is_active:
+            return user
+            
+        return None
+        
+    except Exception:
+        return None

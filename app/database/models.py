@@ -1,4 +1,5 @@
-from sqlalchemy import Column, String, Float, Integer, DateTime, JSON, Text, Boolean, Enum as SQLEnum
+from sqlalchemy import Column, String, Float, Integer, DateTime, JSON, Text, Boolean, Enum as SQLEnum, ForeignKey
+from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 # from geoalchemy2 import Geometry  # TEMP: Commented out - requires GDAL/PROJ libraries
 from datetime import datetime
@@ -50,6 +51,9 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
     
+    # Relationships
+    simulations = relationship("Simulation", back_populates="user", cascade="all, delete-orphan")
+
     def __repr__(self):
         return f"<User {self.username} - {self.role.value}>"
 
@@ -65,6 +69,7 @@ class Simulation(Base):
     depth = Column(Float, nullable=False)
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
+    mode = Column(String(20), default="AI", nullable=False) # AI or HEURISTIC
     
     # Epicenter as PostGIS Point
     # TEMP: Commented out - requires geoalchemy2
@@ -81,6 +86,10 @@ class Simulation(Base):
     # Processing metrics
     processing_time_ms = Column(Integer, nullable=True)
     model_version = Column(String(50), nullable=True)
+    
+    # Relationship
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    user = relationship("User", back_populates="simulations")
     
     def __repr__(self):
         return f"<Simulation {self.id}: M{self.magnitude} at ({self.latitude}, {self.longitude})>"

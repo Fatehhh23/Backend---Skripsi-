@@ -7,6 +7,7 @@ from uuid import UUID
 
 from app.database.connection import get_db
 from app.database.models import User, Simulation, UserRole
+from app.database import crud
 from app.schemas.admin import (
     UserListResponse, 
     UserListItem,
@@ -46,8 +47,12 @@ async def get_all_users(
     Returns paginated list of users.
     """
     
-    # Build query
-    query = select(User)
+    # Build query with simulation count
+    query = (
+        select(User, func.count(Simulation.id).label("total_simulations"))
+        .outerjoin(Simulation, User.simulations)
+        .group_by(User.id)
+    )
     
     # Apply filters
     filters = []
@@ -80,10 +85,17 @@ async def get_all_users(
     
     # Execute query
     result = await db.execute(query)
-    users = result.scalars().all()
+    rows = result.all()
+    
+    # Map to response
+    user_list = []
+    for user, sim_count in rows:
+        user_data = UserListItem.model_validate(user)
+        user_data.total_simulations = sim_count
+        user_list.append(user_data)
     
     return UserListResponse(
-        users=[UserListItem.model_validate(user) for user in users],
+        users=user_list,
         total=total,
         page=page,
         page_size=page_size
@@ -317,3 +329,30 @@ async def get_all_simulations(
         page=page,
         page_size=page_size
     )
+
+@router.delete("/users/{user_id}/simulations", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user_history(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_admin: User = Depends(get_current_admin_user)
+):
+    """
+    Delete all simulation history for a specific user.
+    
+    **Admin only** - Requires admin role.
+    """
+    
+    # Check if user exists
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Delete history
+    await crud.delete_user_simulation_history(db, user_id)
+    
+    return None

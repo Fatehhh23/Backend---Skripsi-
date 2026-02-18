@@ -8,6 +8,8 @@ from app.services.prediction_service import PredictionService
 from app.database.connection import get_db
 from app.database import crud
 from app.utils.validators import validate_earthquake_params
+from app.core.dependencies import get_current_user_optional
+from app.database.models import User
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -17,7 +19,8 @@ async def run_simulation(
     request_data: SimulationRequest,
     background_tasks: BackgroundTasks,
     req: Request,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """
     Endpoint untuk menjalankan simulasi tsunami manual.
@@ -53,7 +56,8 @@ async def run_simulation(
             magnitude=request_data.magnitude,
             depth=request_data.depth,
             latitude=request_data.latitude,
-            longitude=request_data.longitude
+            longitude=request_data.longitude,
+            mode=request_data.mode
         )
         
         # Get client IP address
@@ -70,7 +74,9 @@ async def run_simulation(
             result=result,
             processing_time_ms=processing_time_ms,
             user_session_id=None,  # TODO: Implement session tracking
-            ip_address=client_ip
+            user_id=current_user.id if current_user else None,
+            ip_address=client_ip,
+            mode=request_data.mode
         )
         
         logger.info(f"Simulation completed: ETA={result['prediction']['eta']}min")

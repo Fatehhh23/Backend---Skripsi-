@@ -7,6 +7,12 @@ from app.schemas.auth import UserRegister, UserLogin
 from app.core.security import verify_password, get_password_hash, create_access_token
 from datetime import datetime
 import logging
+import secrets
+import string
+import requests
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from app.schemas.auth import UserRegister, UserLogin, SocialLoginRequest
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +105,110 @@ class AuthService:
         )
         
         logger.info(f"✅ User logged in: {user.email}")
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": user
+        }
+
+    @staticmethod
+    async def verify_google_token(token: str) -> dict:
+        """Verify Google Access Token"""
+        try:
+            # Verify via UserInfo endpoint (supports Access Token from custom buttons)
+            response = requests.get(
+                'https://www.googleapis.com/oauth2/v3/userinfo',
+                params={'access_token': token}
+            )
+            
+            if response.status_code != 200:
+                # Fallback: Try ID Token verification if access token fails
+                try:
+                    id_info = id_token.verify_oauth2_token(token, google_requests.Request())
+                    return {
+                        "email": id_info['email'],
+                        "full_name": id_info.get('name'),
+                        "picture": id_info.get('picture')
+                    }
+                except ValueError:
+                    raise ValueError("Failed to verify token with Google")
+                
+            data = response.json()
+            return {
+                "email": data['email'],
+                "full_name": data.get('name'),
+                "picture": data.get('picture')
+            }
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid Google token: {str(e)}"
+            )
+
+
+
+    @staticmethod
+    async def social_login(db: AsyncSession, login_data: SocialLoginRequest) -> dict:
+        """Handle social login (Google/Facebook/Apple)"""
+        
+        user_info = None
+        
+        # 1. Verify Token
+        # 1. Verify Token
+        if login_data.provider.lower() == 'google':
+            user_info = await AuthService.verify_google_token(login_data.token)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported provider calls: {login_data.provider}"
+            )
+            
+        email = user_info['email']
+        
+        # 2. Check if user exists
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            # 3. Create new user if not exists
+            # Generate random secure password (since they login via social)
+            alphabet = string.ascii_letters + string.digits
+            random_password = ''.join(secrets.choice(alphabet) for i in range(20))
+            hashed_password = get_password_hash(random_password)
+            
+            # Use email prefix as username if possible, check uniqueness logic later
+            base_username = email.split('@')[0]
+            # Ensure username is unique - simple retry logic or append random
+            username = base_username
+            
+            # Check username uniqueness
+            username_exists = await db.execute(select(User).where(User.username == username))
+            if username_exists.scalar_one_or_none():
+                username = f"{base_username}_{secrets.token_hex(2)}"
+            
+            new_user = User(
+                email=email,
+                username=username,
+                password_hash=hashed_password,
+                full_name=user_info.get('full_name', ''),
+                is_active=True,
+                is_verified=True # Social login emails are usually verified
+            )
+            
+            db.add(new_user)
+            await db.commit()
+            await db.refresh(new_user)
+            user = new_user
+            logger.info(f"✅ New user registered via {login_data.provider}: {user.email}")
+            
+        else:
+             logger.info(f"✅ User logged in via {login_data.provider}: {user.email}")
+        
+        # 4. Generate Token
+        access_token = create_access_token(
+            data={"sub": str(user.id), "email": user.email, "role": user.role.value}
+        )
         
         return {
             "access_token": access_token,

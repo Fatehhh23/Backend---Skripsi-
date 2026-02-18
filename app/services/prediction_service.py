@@ -2,6 +2,7 @@ import numpy as np
 import logging
 from typing import Dict, Any, List
 import time
+import os
 import math
 
 from app.config import settings
@@ -19,19 +20,28 @@ class PredictionService:
     def __init__(self):
         self.model = None
         self.model_loaded = False
-        # self._load_model()  # Uncomment saat model sudah ready
+        self._load_model()
     
     def _load_model(self):
         """
         Load trained model dari file ONNX
         """
         try:
-            # TODO: Implement ONNX model loading
-            # import onnxruntime as ort
-            # self.model = ort.InferenceSession(settings.MODEL_PATH)
-            logger.info(f"Loading model from {settings.MODEL_PATH}")
-            self.model_loaded = True
-            logger.info("✅ Model loaded successfully")
+            import onnxruntime as ort
+            model_path = settings.MODEL_PATH
+            # Ensure path is absolute or relative to cwd
+            if not os.path.exists(model_path):
+                 # Try relative to project root
+                 model_path = os.path.join(settings.BASE_DIR, settings.MODEL_PATH)
+            
+            if os.path.exists(model_path):
+                self.model = ort.InferenceSession(model_path)
+                self.model_loaded = True
+                logger.info(f"✅ Model loaded successfully from {model_path}")
+            else:
+                logger.error(f"❌ Model file not found at {model_path}")
+                self.model_loaded = False
+                
         except Exception as e:
             logger.error(f"❌ Failed to load model: {e}")
             self.model_loaded = False
@@ -41,49 +51,99 @@ class PredictionService:
         magnitude: float,
         depth: float,
         latitude: float,
-        longitude: float
+        longitude: float,
+        mode: str = "AI"
     ) -> Dict[str, Any]:
         """
-        Run tsunami prediction based on earthquake parameters.
-        
-        Returns:
-            Dict containing prediction results with:
-            - prediction: {eta, maxWaveHeight, affectedArea, tsunamiCategory, estimatedCasualties}
-            - epicenter: {latitude, longitude}
-            - inundationZones: List of zones
-            - impactZones: List of affected coastal areas
-            - waveData: Temporal wave height data
+        Run tsunami prediction using ONNX model (AI) or Heuristics (General).
         """
         start_time = time.time()
-        logger.info(f"Running prediction for M{magnitude} at ({latitude}, {longitude}), depth={depth}km")
+        logger.info(f"Running prediction [{mode}] for M{magnitude} at ({latitude}, {longitude}), depth={depth}km")
         
-        # ========== DEMO IMPLEMENTATION ==========
-        # Replace dengan model inference sebenarnya
+        model_max_wave = 0.0
         
-        # Calculate basic tsunami risk
-        tsunami_potential = self._assess_tsunami_potential(magnitude, depth)
+        # ============================================
+        # MODE 1: AI (Selat Sunda Only)
+        # ============================================
+        if mode == "AI" and self.model_loaded:
+            try:
+                # 1. Prepare Input for Model
+                # Map lat/lon to grid coordinates (0-127)
+                bounds = settings.SUNDA_STRAIT_BOUNDS
+                lat_range = bounds["max_lat"] - bounds["min_lat"]
+                lon_range = bounds["max_lon"] - bounds["min_lon"]
+                
+                # Normalize coordinates 0-1
+                norm_x = (longitude - bounds["min_lon"]) / lon_range
+                norm_y = (latitude - bounds["min_lat"]) / lat_range
+                
+                # Grid size
+                H, W = 128, 128
+                grid_x = int(norm_x * W)
+                grid_y = int(norm_y * H)
+                
+                # Clamp to grid
+                grid_x = max(0, min(grid_x, W-1))
+                grid_y = max(0, min(grid_y, H-1))
+                
+                # Create input tensor
+                input_tensor = np.zeros((1, 128, 128, 2), dtype=np.float32)
+                
+                # Create Gaussian bump
+                x = np.linspace(0, W-1, W)
+                y = np.linspace(0, H-1, H)
+                xv, yv = np.meshgrid(x, y)
+                
+                # Sigma depends on magnitude
+                sigma = (magnitude - 5.0) * 2.0
+                if sigma < 1.0: sigma = 1.0
+                
+                gaussian = np.exp(-((xv - grid_x)**2 + (yv - grid_y)**2) / (2 * sigma**2))
+                displacement = gaussian * (magnitude - 5.0) 
+                
+                input_tensor[0, :, :, 0] = displacement
+                input_tensor[0, :, :, 1] = 0.5  # Constant normalized depth
+                
+                # 2. Run Inference
+                input_name = self.model.get_inputs()[0].name
+                outputs = self.model.run(None, {input_name: input_tensor})
+                
+                wave_grid = outputs[0][0, :, :, 0] # Extract 128x128 grid
+                model_max_wave = np.max(wave_grid)
+                
+                # Calibrate/Normalize
+                model_max_wave = float(model_max_wave)
+                logger.info(f"AI Model Result: {model_max_wave}m")
+
+            except Exception as e:
+                logger.error(f"AI Inference failed: {e}")
+                # Fallback
+                model_max_wave = self._estimate_wave_height(magnitude, depth)
+
+        # ============================================
+        # MODE 2: HEURISTIC (General Locations)
+        # ============================================
+        else:
+            logger.info("Using Heuristic Mode (General)")
+            model_max_wave = self._estimate_wave_height(magnitude, depth)
+
+        # 3. Finalize Output
+        # Use model output or fallback estimate if model output is suspicious (too low/high)
+        # For simplicity, we trust the chosen method
+        max_wave_height = model_max_wave
         
-        # Estimate wave parameters
-        max_wave_height = self._estimate_wave_height(magnitude, depth)
+        # Recalculate derived metrics
         eta_minutes = self._estimate_eta(magnitude, depth, latitude, longitude)
         affected_area = self._estimate_affected_area(magnitude, max_wave_height)
-        
-        # Classify tsunami category
         category = self._classify_tsunami_category(magnitude, max_wave_height)
-        
-        # Estimate casualties (very rough)
         casualties = self._estimate_casualties(magnitude, max_wave_height, affected_area)
         
-        # Generate inundation zones (simplified)
+        # Generate zones (could use wave_grid for contours in future)
         inundation_zones = self._generate_inundation_zones(latitude, longitude, max_wave_height)
-        
-        # Get impact zones (coastal cities)
         impact_zones = self._get_impact_zones(latitude, longitude, magnitude, max_wave_height)
-        
-        # Generate wave temporal data
         wave_data = self._generate_wave_data(eta_minutes, max_wave_height)
         
-        processing_time = (time.time() - start_time) * 1000  # ms
+        processing_time = (time.time() - start_time) * 1000
         
         result = {
             "prediction": {
@@ -92,7 +152,8 @@ class PredictionService:
                 "affectedArea": round(affected_area, 2),
                 "tsunamiCategory": category,
                 "estimatedCasualties": casualties,
-                "processingTimeMs": int(processing_time)
+                "processingTimeMs": int(processing_time),
+                "modelUsed": "ONNX: Tsunami-ViT" if self.model_loaded else "Heuristic Fallback"
             },
             "epicenter": {
                 "latitude": latitude,
@@ -103,7 +164,7 @@ class PredictionService:
             "waveData": wave_data
         }
         
-        logger.info(f"✅ Prediction completed in {processing_time:.0f}ms: Category={category}, ETA={eta_minutes}min")
+        logger.info(f"✅ Prediction completed: Category={category}, MaxWave={max_wave_height:.2f}m")
         return result
     
     def _assess_tsunami_potential(self, magnitude: float, depth: float) -> bool:

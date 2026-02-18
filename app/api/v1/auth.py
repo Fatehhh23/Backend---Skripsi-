@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
-from app.schemas.auth import UserRegister, UserLogin, TokenResponse, UserResponse, UserProfile
+from app.schemas.auth import UserRegister, UserLogin, TokenResponse, UserResponse, UserProfile, SocialLoginRequest
 from app.services.auth_service import AuthService
 from app.core.dependencies import get_current_user
 from app.database.models import User
@@ -45,6 +45,17 @@ async def login(
     Token valid selama 24 jam.
     """
     result = await AuthService.login_user(db, login_data)
+    return result
+
+@router.post("/social-login", response_model=TokenResponse)
+async def social_login(
+    login_data: SocialLoginRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Login/Register using Social Media (Google, Facebook, Apple).
+    """
+    result = await AuthService.social_login(db, login_data)
     return result
 
 @router.get("/me", response_model=UserProfile)

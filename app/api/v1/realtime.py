@@ -32,22 +32,63 @@ async def get_realtime_earthquakes(
         # Get from database (populated by scheduler)
         earthquakes = await crud.get_earthquake_history(db, limit=limit)
         
+        # Initialize Prediction Service (AI Model)
+        from app.services.prediction_service import PredictionService
+        try:
+            prediction_service = PredictionService()
+            model_active = True
+        except Exception as e:
+            logger.error(f"Failed to load PredictionService for realtime: {e}")
+            model_active = False
+
         # Analyze tsunami risk for each earthquake
         analyzed_earthquakes = []
         for eq in earthquakes:
-            # Simple risk assessment
             risk_level = "Rendah"
             max_wave_height = 0.0
             
-            # Convert timestamp to aware datetime if naive (for calculation)
-            # SQLAlchemy returns naive for timestamp without timezone
+            if model_active:
+                try:
+                    # Run AI Prediction
+                    # Ensure parameters are floats
+                    pred_result = await prediction_service.predict(
+                        magnitude=float(eq['magnitude']),
+                        depth=float(eq['depth']),
+                        latitude=float(eq['latitude']),
+                        longitude=float(eq['longitude'])
+                    )
+                    
+                    # Extract result
+                    prediction = pred_result.get('prediction', {})
+                    model_category = prediction.get('tsunamiCategory', 'Low')
+                    max_wave_height = prediction.get('maxWaveHeight', 0.0)
+                    
+                    # Map Category to Indonesian (Bahaya/Sedang/Rendah)
+                    if model_category in ['Extreme', 'High']:
+                        risk_level = "Bahaya"
+                    elif model_category == 'Medium':
+                        risk_level = "Sedang"
+                    else:
+                        risk_level = "Rendah"
+                        
+                except Exception as pred_error:
+                    logger.warning(f"AI Prediction failed for EQ {eq.get('id')}: {pred_error}")
+                    # Fallback to heuristic if AI fails
+                    if eq['magnitude'] >= 7.5 and eq['depth'] < 50:
+                        risk_level = "Bahaya"
+                        max_wave_height = (float(eq['magnitude']) - 6.5) * 2
+                    elif eq['magnitude'] >= 7.0 and eq['depth'] < 70:
+                        risk_level = "Sedang"
+                        max_wave_height = (float(eq['magnitude']) - 6.0) * 1.5
             
-            if eq['magnitude'] >= 7.5 and eq['depth'] < 50:
-                risk_level = "Bahaya"
-                max_wave_height = (eq['magnitude'] - 6.5) * 2
-            elif eq['magnitude'] >= 7.0 and eq['depth'] < 70:
-                risk_level = "Sedang"
-                max_wave_height = (eq['magnitude'] - 6.0) * 1.5
+            else:
+                 # Fallback (Original Heuristic)
+                if eq['magnitude'] >= 7.5 and eq['depth'] < 50:
+                    risk_level = "Bahaya"
+                    max_wave_height = (float(eq['magnitude']) - 6.5) * 2
+                elif eq['magnitude'] >= 7.0 and eq['depth'] < 70:
+                    risk_level = "Sedang"
+                    max_wave_height = (float(eq['magnitude']) - 6.0) * 1.5
             
             # Add risk info
             eq["riskLevel"] = risk_level

@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, asc
+from sqlalchemy import select, func, desc, asc, delete
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import uuid
@@ -19,7 +19,9 @@ async def save_simulation_result(
     result: Dict[str, Any],
     processing_time_ms: Optional[int] = None,
     user_session_id: Optional[str] = None,
-    ip_address: Optional[str] = None
+    user_id: Optional[uuid.UUID] = None,
+    ip_address: Optional[str] = None,
+    mode: str = "AI"
 ) -> Simulation:
     """
     Menyimpan hasil simulasi ke database
@@ -34,11 +36,13 @@ async def save_simulation_result(
             depth=params['depth'],
             latitude=params['latitude'],
             longitude=params['longitude'],
+            mode=mode,
             # TEMP: Commented out - requires geoalchemy2
             # epicenter=from_shape(point, srid=4326),
             prediction_data=result,
             processing_time_ms=processing_time_ms,
             user_session_id=user_session_id,
+            user_id=user_id,
             ip_address=ip_address,
             model_version="1.0.0"
         )
@@ -74,7 +78,8 @@ async def get_simulation_by_id(db: AsyncSession, simulation_id: str) -> Optional
                 "longitude": simulation.longitude,
                 "prediction_data": simulation.prediction_data,
                 "created_at": simulation.created_at.isoformat(),
-                "processing_time_ms": simulation.processing_time_ms
+                "processing_time_ms": simulation.processing_time_ms,
+                "mode": simulation.mode
             }
         return None
         
@@ -116,7 +121,8 @@ async def get_simulation_history(
                 "latitude": sim.latitude,
                 "longitude": sim.longitude,
                 "created_at": sim.created_at.isoformat(),
-                "tsunami_category": sim.prediction_data.get('prediction', {}).get('tsunamiCategory', 'Unknown')
+                "tsunami_category": sim.prediction_data.get('prediction', {}).get('tsunamiCategory', 'Unknown'),
+                "mode": sim.mode
             }
             for sim in simulations
         ]
@@ -263,5 +269,18 @@ async def count_earthquakes(db: AsyncSession) -> int:
     """
     Menghitung total data gempa
     """
-    result = await db.execute(select(func.count(Earthquake.id)))
     return result.scalar() or 0
+
+async def delete_user_simulation_history(db: AsyncSession, user_id: uuid.UUID) -> int:
+    """
+    Menghapus semua riwayat simulasi milik user tertentu
+    """
+    try:
+        stmt = delete(Simulation).where(Simulation.user_id == user_id)
+        result = await db.execute(stmt)
+        await db.commit()
+        return result.rowcount
+    except Exception as e:
+        logger.error(f"Error deleting user history: {e}", exc_info=True)
+        await db.rollback()
+        raise
