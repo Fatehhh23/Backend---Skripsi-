@@ -1,0 +1,48 @@
+# fly.toml - Konfigurasi Fly.io untuk AVATAR Backend
+# Generated untuk deployment FastAPI + ONNX Model
+
+app = "avatar-tsunami-backend"
+primary_region = "sin"  # Singapore - paling dekat ke Indonesia
+
+[build]
+  # Pakai Dockerfile yang sudah ada
+  dockerfile = "Dockerfile"
+
+[env]
+  # Environment variables non-sensitif
+  DEBUG = "False"
+  LOG_LEVEL = "INFO"
+  MODEL_PATH = "trained_models/model_tsunami_trial.onnx"
+  BMKG_API_URL = "https://data.bmkg.go.id/DataMKG/TEWS/"
+  USGS_API_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
+  ENABLE_REALTIME_MONITORING = "True"
+  POLL_INTERVAL = "60"
+  PORT = "8000"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = false   # Jangan sleep otomatis
+  auto_start_machines = true
+  min_machines_running = 1     # Selalu ada 1 instance berjalan
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+[[vm]]
+  # Free tier: 256MB RAM, shared CPU
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[checks]
+  [checks.health]
+    grace_period = "30s"
+    interval = "15s"
+    method = "GET"
+    path = "/api/health"
+    port = 8000
+    timeout = "10s"
+    type = "http"

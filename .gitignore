@@ -48,8 +48,8 @@ logs/
 *.sqlite
 *.sqlite3
 
-# Model files (large)
-trained_models/*.onnx
+# Model files (large) - Tracked via Git LFS (see .gitattributes)
+# trained_models/*.onnx  <-- dibiarkan agar bisa masuk Git LFS
 trained_models/*.pth
 trained_models/*.pt
 !trained_models/.gitkeep
