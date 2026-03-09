@@ -170,3 +170,18 @@ class CoastlineData(Base):
     
     def __repr__(self):
         return f"<Coastline {self.name}>"
+
+class ContactMessage(Base):
+    """Model untuk menyimpan pesan dari form kontak user"""
+    __tablename__ = "contact_messages"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False)
+    subject = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    status = Column(String(50), default="unread", nullable=False) # 'unread' or 'resolved'
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    def __repr__(self):
+        return f"<ContactMessage {self.id} from {self.name} - {self.status}>"

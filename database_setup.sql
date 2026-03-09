@@ -174,6 +174,21 @@ CREATE TABLE IF NOT EXISTS coastlines (
 );
 -- Index spatial untuk garis pantai
 CREATE INDEX IF NOT EXISTS idx_coastlines_geometry ON coastlines USING GIST (geometry);
+-- ---------------------------------------------
+-- Tabel 5: CONTACT_MESSAGES
+-- ---------------------------------------------
+-- Menyimpan pesan yang dikirim dari form kontak user
+CREATE TABLE IF NOT EXISTS contact_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    status VARCHAR(50) DEFAULT 'unread' NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+-- Index untuk pencarian berdasarkan waktu
+CREATE INDEX IF NOT EXISTS idx_contact_messages_created_at ON contact_messages (created_at DESC);
 -- ============================================
 -- LANGKAH 5: Insert Data Contoh Garis Pantai
 -- ============================================

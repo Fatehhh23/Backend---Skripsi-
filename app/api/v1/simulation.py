@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 import logging
@@ -20,7 +20,8 @@ async def run_simulation(
     background_tasks: BackgroundTasks,
     req: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user_optional)
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    x_session_id: Optional[str] = Header(None)
 ):
     """
     Endpoint untuk menjalankan simulasi tsunami manual.
@@ -47,6 +48,15 @@ async def run_simulation(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
+    # ============================================================
+    # ACCESS CONTROL: Mode AI hanya untuk user yang sudah login
+    # ============================================================
+    if request_data.mode == "AI" and current_user is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Mode AI memerlukan autentikasi. Silakan login terlebih dahulu untuk menggunakan simulasi AI yang presisi."
+        )
+
     try:
         # Initialize prediction service
         prediction_service = PredictionService()
@@ -73,7 +83,7 @@ async def run_simulation(
             params=request_data.dict(),
             result=result,
             processing_time_ms=processing_time_ms,
-            user_session_id=None,  # TODO: Implement session tracking
+            user_session_id=x_session_id,
             user_id=current_user.id if current_user else None,
             ip_address=client_ip,
             mode=request_data.mode

@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.api.v1 import health, simulation, realtime, history, auth, admin
+from app.api.v1 import health, simulation, realtime, history, auth, admin, contacts
 from app.core.scheduler import scheduler
 
 @asynccontextmanager
@@ -30,7 +30,7 @@ app = FastAPI(
 # ============================================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origin_regex="https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -56,3 +56,4 @@ app.include_router(simulation.router, prefix="/api/v1/simulation", tags=["Simula
 app.include_router(realtime.router, prefix="/api/v1/earthquakes", tags=["Real-Time"])
 app.include_router(history.router, prefix="/api/v1/history", tags=["History"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
+app.include_router(contacts.router, prefix="/api/v1/contacts", tags=["Contacts"])

@@ -28,8 +28,8 @@ COPY ./app ./app
 COPY ./data ./data
 COPY ./trained_models ./trained_models
 
-# Expose port (Fly.io akan set $PORT otomatis, default 8000)
+# Expose port
 EXPOSE 8000
 
-# Production: tanpa --reload, pakai PORT dari environment
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
+# Run uvicorn server
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

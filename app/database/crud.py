@@ -5,7 +5,7 @@ from datetime import datetime
 import uuid
 import logging
 
-from app.database.models import Simulation, Earthquake, InundationZone
+from app.database.models import Simulation, Earthquake, InundationZone, User, UserRole
 # from geoalchemy2.shape import from_shape  # TEMP: Commented out - requires GDAL/PROJ libraries
 # from shapely.geometry import Point  # TEMP: Commented out - requires GDAL/PROJ libraries
 
@@ -31,6 +31,30 @@ async def save_simulation_result(
         # TEMP: Commented out - requires geoalchemy2
         # point = Point(params['longitude'], params['latitude'])
         
+        # Check if we need to auto-create or assign a Guest user
+        if not user_id and user_session_id:
+            # Look for existing guest by username matching session id
+            user_query = await db.execute(select(User).where(User.username == user_session_id))
+            guest_user = user_query.scalar_one_or_none()
+            
+            if not guest_user:
+                # Create a new guest user
+                guest_user = User(
+                    email=f"{user_session_id}@guest.local",
+                    username=user_session_id,
+                    password_hash="guest_no_login_allowed_hash_dummy",
+                    full_name=f"Guest User",
+                    role=UserRole.GUEST,
+                    is_active=True,
+                    is_verified=True
+                )
+                db.add(guest_user)
+                await db.commit()
+                await db.refresh(guest_user)
+            
+            # Map the simulation to this guest user
+            user_id = guest_user.id
+
         simulation = Simulation(
             magnitude=params['magnitude'],
             depth=params['depth'],

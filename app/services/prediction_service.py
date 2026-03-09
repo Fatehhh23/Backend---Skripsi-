@@ -1,6 +1,6 @@
 import numpy as np
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import time
 import os
 import math
@@ -61,6 +61,7 @@ class PredictionService:
         logger.info(f"Running prediction [{mode}] for M{magnitude} at ({latitude}, {longitude}), depth={depth}km")
         
         model_max_wave = 0.0
+        ai_wave_grid = None  # Akan diisi 128x128 grid dari AI jika berhasil
         
         # ============================================
         # MODE 1: AI (Selat Sunda Only)
@@ -109,11 +110,12 @@ class PredictionService:
                 outputs = self.model.run(None, {input_name: input_tensor})
                 
                 wave_grid = outputs[0][0, :, :, 0] # Extract 128x128 grid
+                ai_wave_grid = wave_grid            # ✅ Capture untuk inundation contours
                 model_max_wave = np.max(wave_grid)
                 
                 # Calibrate/Normalize
                 model_max_wave = float(model_max_wave)
-                logger.info(f"AI Model Result: {model_max_wave}m")
+                logger.info(f"AI Model Result: {model_max_wave}m (wave_grid captured)")
 
             except Exception as e:
                 logger.error(f"AI Inference failed: {e}")
@@ -138,8 +140,8 @@ class PredictionService:
         category = self._classify_tsunami_category(magnitude, max_wave_height)
         casualties = self._estimate_casualties(magnitude, max_wave_height, affected_area)
         
-        # Generate zones (could use wave_grid for contours in future)
-        inundation_zones = self._generate_inundation_zones(latitude, longitude, max_wave_height)
+        # Generate contour zones dari AI wave_grid (atau fallback ke ellipse halus)
+        inundation_zones = self._generate_inundation_zones(latitude, longitude, max_wave_height, wave_grid=ai_wave_grid)
         impact_zones = self._get_impact_zones(latitude, longitude, magnitude, max_wave_height)
         wave_data = self._generate_wave_data(eta_minutes, max_wave_height)
         
@@ -244,34 +246,101 @@ class PredictionService:
         base_casualties = area * wave_height * 20
         return int(min(base_casualties, 10000))  # Cap at 10k
     
-    def _generate_inundation_zones(self, lat: float, lon: float, wave_height: float) -> List[Dict]:
+    def _generate_inundation_zones(
+        self,
+        lat: float,
+        lon: float,
+        wave_height: float,
+        wave_grid: Optional[np.ndarray] = None
+    ) -> List[Dict]:
         """
-        Generate simplified inundation zones
-        TODO: Replace with actual GeoJSON polygons from model output
+        Generate inundation zone polygons.
+        - Mode AI  : Ekstrak kontur dari wave_grid 128x128 via Marching Squares (scikit-image).
+        - Mode Fallback: 3 ellipsis konsentris halus (jauh lebih baik dari kotak).
         """
         if wave_height < 0.5:
             return []
-        
-        # Generate simple circular zones around epicenter
+
+        # ── Mode 1: AI Contour (Marching Squares dari wave_grid) ──────────────
+        if wave_grid is not None:
+            try:
+                from skimage import measure
+                from app.config import settings
+
+                bounds = settings.SUNDA_STRAIT_BOUNDS
+                min_lat = bounds["min_lat"]
+                max_lat = bounds["max_lat"]
+                min_lon = bounds["min_lon"]
+                max_lon = bounds["max_lon"]
+                H, W = wave_grid.shape  # 128 x 128
+
+                grid_max = float(np.max(wave_grid))
+                if grid_max < 1e-6:
+                    raise ValueError("wave_grid kosong/flat, gunakan fallback")
+
+                # 3 level kontur: 30%, 55%, 80% dari nilai puncak
+                thresholds = [
+                    (grid_max * 0.30, wave_height * 1.0),   # zona luar  (rendah)
+                    (grid_max * 0.55, wave_height * 0.6),   # zona tengah (sedang)
+                    (grid_max * 0.80, wave_height * 0.3),   # zona dalam  (tinggi)
+                ]
+
+                zones = []
+                for level, height_at_level in thresholds:
+                    contours = measure.find_contours(wave_grid, level=level)
+                    if not contours:
+                        continue
+
+                    # Ambil kontur terbesar di level ini
+                    largest = max(contours, key=lambda c: len(c))
+                    if len(largest) < 4:
+                        continue
+
+                    # Konversi piksel grid (row, col) → koordinat lat/lon nyata
+                    ring = []
+                    for row, col in largest:
+                        real_lon = min_lon + (col / (W - 1)) * (max_lon - min_lon)
+                        real_lat = min_lat + (row / (H - 1)) * (max_lat - min_lat)
+                        ring.append([round(real_lon, 6), round(real_lat, 6)])
+
+                    # Tutup ring (GeoJSON: titik pertama == titik terakhir)
+                    ring.append(ring[0])
+
+                    zones.append({
+                        "coordinates": [ring],
+                        "height": round(height_at_level, 2)
+                    })
+
+                if zones:
+                    logger.info(f"✅ Kontur inundasi: {len(zones)} zona dari wave_grid AI")
+                    return zones
+
+            except Exception as e:
+                logger.warning(f"⚠️ Ekstraksi kontur gagal, fallback ke ellipse: {e}")
+
+        # ── Mode 2: Fallback – Ellipsis halus (bukan kotak) ────────────────────
+        logger.info("Menggunakan ellipsis fallback untuk inundation zones")
         zones = []
-        for i in range(3):
-            radius = (i + 1) * 0.05  # degrees
-            height = wave_height / (i + 1)
-            
-            # ✅ FIXED: Correct GeoJSON Polygon structure (2 levels of nesting)
-            # Format: coordinates: [ [exterior_ring], [hole1], [hole2], ... ]
-            # Each ring is array of [lon, lat] points
+        # semi_lon, semi_lat = setengah sumbu ellipsis dalam derajat
+        ellipse_params = [
+            (0.20, 0.13, wave_height * 1.0),   # luar
+            (0.13, 0.08, wave_height * 0.6),   # tengah
+            (0.07, 0.045, wave_height * 0.3),  # dalam
+        ]
+        n_points = 36  # 36 titik = lingkaran halus
+        for semi_lon, semi_lat, height_at_level in ellipse_params:
+            ring = []
+            for i in range(n_points):
+                angle = 2 * math.pi * i / n_points
+                ring.append([
+                    round(lon + semi_lon * math.cos(angle), 6),
+                    round(lat + semi_lat * math.sin(angle), 6)
+                ])
+            ring.append(ring[0])  # tutup ring
             zones.append({
-                "coordinates": [[  # Removed extra nesting level
-                    [lon - radius, lat - radius],
-                    [lon + radius, lat - radius],
-                    [lon + radius, lat + radius],
-                    [lon - radius, lat + radius],
-                    [lon - radius, lat - radius]
-                ]],
-                "height": round(height, 2)
+                "coordinates": [ring],
+                "height": round(height_at_level, 2)
             })
-        
         return zones
     
     def _get_impact_zones(self, lat: float, lon: float, magnitude: float, wave_height: float) -> List[Dict]:
